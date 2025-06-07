@@ -65,7 +65,7 @@
 //!
 //! # Minimum Supported Rust Version (MSRV)
 //!
-//! This crate is guaranteed to compile on stable Rust 1.65 and up with any valid set of features.
+//! This crate is guaranteed to compile on stable Rust 1.80 and up with any valid set of features.
 //! It *might* compile on older versions but that may change in any new patch release.
 //!
 //! The exception is when using the `defmt` feature, in which case `defmt`'s MSRV applies, which
@@ -136,7 +136,7 @@ pub mod config {
     pub const DNS_MAX_NAME_SIZE: usize = 255;
     pub const DNS_MAX_RESULT_COUNT: usize = 1;
     pub const DNS_MAX_SERVER_COUNT: usize = 1;
-    pub const FRAGMENTATION_BUFFER_SIZE: usize = 1500;
+    pub const FRAGMENTATION_BUFFER_SIZE: usize = 4096;
     pub const IFACE_MAX_ADDR_COUNT: usize = 8;
     pub const IFACE_MAX_MULTICAST_GROUP_COUNT: usize = 4;
     pub const IFACE_MAX_ROUTE_COUNT: usize = 4;
@@ -146,7 +146,7 @@ pub mod config {
     pub const REASSEMBLY_BUFFER_SIZE: usize = 1500;
     pub const RPL_RELATIONS_BUFFER_COUNT: usize = 16;
     pub const RPL_PARENTS_BUFFER_COUNT: usize = 8;
-    pub const IPV6_HBH_MAX_OPTIONS: usize = 2;
+    pub const IPV6_HBH_MAX_OPTIONS: usize = 4;
 }
 
 #[cfg(not(test))]

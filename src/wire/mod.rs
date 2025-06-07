@@ -93,7 +93,7 @@ mod icmpv4;
 mod icmpv6;
 #[cfg(feature = "medium-ieee802154")]
 pub mod ieee802154;
-#[cfg(feature = "proto-igmp")]
+#[cfg(feature = "proto-ipv4")]
 mod igmp;
 pub(crate) mod ip;
 #[cfg(feature = "proto-ipv4")]
@@ -188,20 +188,29 @@ pub use self::ip::{
 pub use self::ipv4::{
     Address as Ipv4Address, Cidr as Ipv4Cidr, Key as Ipv4FragKey, Packet as Ipv4Packet,
     Repr as Ipv4Repr, HEADER_LEN as IPV4_HEADER_LEN, MIN_MTU as IPV4_MIN_MTU,
+    MULTICAST_ALL_ROUTERS as IPV4_MULTICAST_ALL_ROUTERS,
+    MULTICAST_ALL_SYSTEMS as IPV4_MULTICAST_ALL_SYSTEMS,
 };
 
-#[cfg(feature = "proto-ipv6")]
-pub(crate) use self::ipv6::MulticastScope as Ipv6MulticastScope;
+#[cfg(feature = "proto-ipv4")]
+pub(crate) use self::ipv4::AddressExt as Ipv4AddressExt;
+
 #[cfg(feature = "proto-ipv6")]
 pub use self::ipv6::{
     Address as Ipv6Address, Cidr as Ipv6Cidr, Packet as Ipv6Packet, Repr as Ipv6Repr,
-    HEADER_LEN as IPV6_HEADER_LEN, MIN_MTU as IPV6_MIN_MTU,
+    HEADER_LEN as IPV6_HEADER_LEN,
+    LINK_LOCAL_ALL_MLDV2_ROUTERS as IPV6_LINK_LOCAL_ALL_MLDV2_ROUTERS,
+    LINK_LOCAL_ALL_NODES as IPV6_LINK_LOCAL_ALL_NODES,
+    LINK_LOCAL_ALL_ROUTERS as IPV6_LINK_LOCAL_ALL_ROUTERS,
+    LINK_LOCAL_ALL_RPL_NODES as IPV6_LINK_LOCAL_ALL_RPL_NODES, MIN_MTU as IPV6_MIN_MTU,
 };
+#[cfg(feature = "proto-ipv6")]
+pub(crate) use self::ipv6::{AddressExt as Ipv6AddressExt, MulticastScope as Ipv6MulticastScope};
 
 #[cfg(feature = "proto-ipv6")]
 pub use self::ipv6option::{
     FailureType as Ipv6OptionFailureType, Ipv6Option, Ipv6OptionsIterator, Repr as Ipv6OptionRepr,
-    Type as Ipv6OptionType,
+    RouterAlert as Ipv6OptionRouterAlert, Type as Ipv6OptionType,
 };
 
 #[cfg(feature = "proto-ipv6")]
@@ -225,7 +234,7 @@ pub use self::icmpv4::{
     TimeExceeded as Icmpv4TimeExceeded,
 };
 
-#[cfg(feature = "proto-igmp")]
+#[cfg(feature = "proto-ipv4")]
 pub use self::igmp::{IgmpVersion, Packet as IgmpPacket, Repr as IgmpRepr};
 
 #[cfg(feature = "proto-ipv6")]
@@ -256,13 +265,16 @@ pub use self::ndiscoption::{
 };
 
 #[cfg(feature = "proto-ipv6")]
-pub use self::mld::{AddressRecord as MldAddressRecord, Repr as MldRepr};
+pub use self::mld::{
+    AddressRecord as MldAddressRecord, AddressRecordRepr as MldAddressRecordRepr,
+    RecordType as MldRecordType, Repr as MldRepr,
+};
 
 pub use self::udp::{Packet as UdpPacket, Repr as UdpRepr, HEADER_LEN as UDP_HEADER_LEN};
 
 pub use self::tcp::{
     Control as TcpControl, Packet as TcpPacket, Repr as TcpRepr, SeqNumber as TcpSeqNumber,
-    TcpOption, HEADER_LEN as TCP_HEADER_LEN,
+    TcpOption, TcpTimestampGenerator, TcpTimestampRepr, HEADER_LEN as TCP_HEADER_LEN,
 };
 
 #[cfg(feature = "proto-dhcpv4")]
@@ -318,6 +330,30 @@ pub enum HardwareAddress {
     Ethernet(EthernetAddress),
     #[cfg(feature = "medium-ieee802154")]
     Ieee802154(Ieee802154Address),
+}
+
+#[cfg(any(
+    feature = "medium-ip",
+    feature = "medium-ethernet",
+    feature = "medium-ieee802154"
+))]
+#[cfg(test)]
+impl Default for HardwareAddress {
+    fn default() -> Self {
+        #![allow(unreachable_code)]
+        #[cfg(feature = "medium-ethernet")]
+        {
+            return Self::Ethernet(EthernetAddress::default());
+        }
+        #[cfg(feature = "medium-ip")]
+        {
+            return Self::Ip;
+        }
+        #[cfg(feature = "medium-ieee802154")]
+        {
+            Self::Ieee802154(Ieee802154Address::default())
+        }
+    }
 }
 
 #[cfg(any(

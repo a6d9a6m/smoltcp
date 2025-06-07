@@ -36,6 +36,80 @@ fn parse_ipv6(data: &[u8]) -> crate::wire::Result<Packet<'_>> {
 #[cfg(feature = "medium-ethernet")]
 #[case::ieee802154(Medium::Ieee802154)]
 #[cfg(feature = "medium-ieee802154")]
+fn any_ip(#[case] medium: Medium) {
+    // An empty echo request with destination address fdbe::3, which is not part of the interface
+    // address list.
+    let data = [
+        0x60, 0x0, 0x0, 0x0, 0x0, 0x8, 0x3a, 0x40, 0xfd, 0xbe, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
+        0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x2, 0xfd, 0xbe, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
+        0x0, 0x0, 0x0, 0x0, 0x3, 0x80, 0x0, 0x84, 0x3a, 0x0, 0x0, 0x0, 0x0,
+    ];
+
+    assert_eq!(
+        parse_ipv6(&data),
+        Ok(Packet::new_ipv6(
+            Ipv6Repr {
+                src_addr: Ipv6Address::new(0xfdbe, 0, 0, 0, 0, 0, 0, 0x0002),
+                dst_addr: Ipv6Address::new(0xfdbe, 0, 0, 0, 0, 0, 0, 0x0003),
+                hop_limit: 64,
+                next_header: IpProtocol::Icmpv6,
+                payload_len: 8,
+            },
+            IpPayload::Icmpv6(Icmpv6Repr::EchoRequest {
+                ident: 0,
+                seq_no: 0,
+                data: b"",
+            })
+        ))
+    );
+
+    let (mut iface, mut sockets, _device) = setup(medium);
+
+    // Add a route to the interface, otherwise, we don't know if the packet is routed localy.
+    iface.routes_mut().update(|routes| {
+        routes
+            .push(crate::iface::Route {
+                cidr: IpCidr::Ipv6(Ipv6Cidr::new(
+                    Ipv6Address::new(0xfdbe, 0, 0, 0, 0, 0, 0, 0),
+                    64,
+                )),
+                via_router: IpAddress::Ipv6(Ipv6Address::new(0xfdbe, 0, 0, 0, 0, 0, 0, 0x0001)),
+                preferred_until: None,
+                expires_at: None,
+            })
+            .unwrap();
+    });
+
+    assert_eq!(
+        iface.inner.process_ipv6(
+            &mut sockets,
+            PacketMeta::default(),
+            HardwareAddress::default(),
+            &Ipv6Packet::new_checked(&data[..]).unwrap()
+        ),
+        None
+    );
+
+    // Accept any IP:
+    iface.set_any_ip(true);
+    assert!(iface
+        .inner
+        .process_ipv6(
+            &mut sockets,
+            PacketMeta::default(),
+            HardwareAddress::default(),
+            &Ipv6Packet::new_checked(&data[..]).unwrap()
+        )
+        .is_some());
+}
+
+#[rstest]
+#[case::ip(Medium::Ip)]
+#[cfg(feature = "medium-ip")]
+#[case::ethernet(Medium::Ethernet)]
+#[cfg(feature = "medium-ethernet")]
+#[case::ieee802154(Medium::Ieee802154)]
+#[cfg(feature = "medium-ieee802154")]
 fn multicast_source_address(#[case] medium: Medium) {
     let data = [
         0x60, 0x0, 0x0, 0x0, 0x0, 0x0, 0xc, 0x40, 0xff, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
@@ -51,6 +125,7 @@ fn multicast_source_address(#[case] medium: Medium) {
         iface.inner.process_ipv6(
             &mut sockets,
             PacketMeta::default(),
+            HardwareAddress::default(),
             &Ipv6Packet::new_checked(&data[..]).unwrap()
         ),
         response
@@ -80,8 +155,8 @@ fn hop_by_hop_skip_with_icmp(#[case] medium: Medium) {
 
     let response = Some(Packet::new_ipv6(
         Ipv6Repr {
-            src_addr: Ipv6Address::from_parts(&[0xfdbe, 0, 0, 0, 0, 0, 0, 0x0001]),
-            dst_addr: Ipv6Address::from_parts(&[0xfdbe, 0, 0, 0, 0, 0, 0, 0x0002]),
+            src_addr: Ipv6Address::new(0xfdbe, 0, 0, 0, 0, 0, 0, 0x0001),
+            dst_addr: Ipv6Address::new(0xfdbe, 0, 0, 0, 0, 0, 0, 0x0002),
             hop_limit: 64,
             next_header: IpProtocol::Icmpv6,
             payload_len: 19,
@@ -99,6 +174,7 @@ fn hop_by_hop_skip_with_icmp(#[case] medium: Medium) {
         iface.inner.process_ipv6(
             &mut sockets,
             PacketMeta::default(),
+            HardwareAddress::default(),
             &Ipv6Packet::new_checked(&data[..]).unwrap()
         ),
         response
@@ -134,6 +210,7 @@ fn hop_by_hop_discard_with_icmp(#[case] medium: Medium) {
         iface.inner.process_ipv6(
             &mut sockets,
             PacketMeta::default(),
+            HardwareAddress::default(),
             &Ipv6Packet::new_checked(&data[..]).unwrap()
         ),
         response
@@ -188,6 +265,7 @@ fn hop_by_hop_discard_param_problem(#[case] medium: Medium) {
         iface.inner.process_ipv6(
             &mut sockets,
             PacketMeta::default(),
+            HardwareAddress::default(),
             &Ipv6Packet::new_checked(&data[..]).unwrap()
         ),
         response
@@ -245,6 +323,7 @@ fn hop_by_hop_discard_with_multicast(#[case] medium: Medium) {
         iface.inner.process_ipv6(
             &mut sockets,
             PacketMeta::default(),
+            HardwareAddress::default(),
             &Ipv6Packet::new_checked(&data[..]).unwrap()
         ),
         response
@@ -269,8 +348,8 @@ fn imcp_empty_echo_request(#[case] medium: Medium) {
         parse_ipv6(&data),
         Ok(Packet::new_ipv6(
             Ipv6Repr {
-                src_addr: Ipv6Address::from_parts(&[0xfdbe, 0, 0, 0, 0, 0, 0, 0x0002]),
-                dst_addr: Ipv6Address::from_parts(&[0xfdbe, 0, 0, 0, 0, 0, 0, 0x0001]),
+                src_addr: Ipv6Address::new(0xfdbe, 0, 0, 0, 0, 0, 0, 0x0002),
+                dst_addr: Ipv6Address::new(0xfdbe, 0, 0, 0, 0, 0, 0, 0x0001),
                 hop_limit: 64,
                 next_header: IpProtocol::Icmpv6,
                 payload_len: 8,
@@ -285,8 +364,8 @@ fn imcp_empty_echo_request(#[case] medium: Medium) {
 
     let response = Some(Packet::new_ipv6(
         Ipv6Repr {
-            src_addr: Ipv6Address::from_parts(&[0xfdbe, 0, 0, 0, 0, 0, 0, 0x0001]),
-            dst_addr: Ipv6Address::from_parts(&[0xfdbe, 0, 0, 0, 0, 0, 0, 0x0002]),
+            src_addr: Ipv6Address::new(0xfdbe, 0, 0, 0, 0, 0, 0, 0x0001),
+            dst_addr: Ipv6Address::new(0xfdbe, 0, 0, 0, 0, 0, 0, 0x0002),
             hop_limit: 64,
             next_header: IpProtocol::Icmpv6,
             payload_len: 8,
@@ -304,6 +383,7 @@ fn imcp_empty_echo_request(#[case] medium: Medium) {
         iface.inner.process_ipv6(
             &mut sockets,
             PacketMeta::default(),
+            HardwareAddress::default(),
             &Ipv6Packet::new_checked(&data[..]).unwrap()
         ),
         response
@@ -329,8 +409,8 @@ fn icmp_echo_request(#[case] medium: Medium) {
         parse_ipv6(&data),
         Ok(Packet::new_ipv6(
             Ipv6Repr {
-                src_addr: Ipv6Address::from_parts(&[0xfdbe, 0, 0, 0, 0, 0, 0, 0x0002]),
-                dst_addr: Ipv6Address::from_parts(&[0xfdbe, 0, 0, 0, 0, 0, 0, 0x0001]),
+                src_addr: Ipv6Address::new(0xfdbe, 0, 0, 0, 0, 0, 0, 0x0002),
+                dst_addr: Ipv6Address::new(0xfdbe, 0, 0, 0, 0, 0, 0, 0x0001),
                 hop_limit: 64,
                 next_header: IpProtocol::Icmpv6,
                 payload_len: 19,
@@ -345,8 +425,8 @@ fn icmp_echo_request(#[case] medium: Medium) {
 
     let response = Some(Packet::new_ipv6(
         Ipv6Repr {
-            src_addr: Ipv6Address::from_parts(&[0xfdbe, 0, 0, 0, 0, 0, 0, 0x0001]),
-            dst_addr: Ipv6Address::from_parts(&[0xfdbe, 0, 0, 0, 0, 0, 0, 0x0002]),
+            src_addr: Ipv6Address::new(0xfdbe, 0, 0, 0, 0, 0, 0, 0x0001),
+            dst_addr: Ipv6Address::new(0xfdbe, 0, 0, 0, 0, 0, 0, 0x0002),
             hop_limit: 64,
             next_header: IpProtocol::Icmpv6,
             payload_len: 19,
@@ -364,6 +444,7 @@ fn icmp_echo_request(#[case] medium: Medium) {
         iface.inner.process_ipv6(
             &mut sockets,
             PacketMeta::default(),
+            HardwareAddress::default(),
             &Ipv6Packet::new_checked(&data[..]).unwrap()
         ),
         response
@@ -389,8 +470,8 @@ fn icmp_echo_reply_as_input(#[case] medium: Medium) {
         parse_ipv6(&data),
         Ok(Packet::new_ipv6(
             Ipv6Repr {
-                src_addr: Ipv6Address::from_parts(&[0xfdbe, 0, 0, 0, 0, 0, 0, 0x0002]),
-                dst_addr: Ipv6Address::from_parts(&[0xfdbe, 0, 0, 0, 0, 0, 0, 0x0001]),
+                src_addr: Ipv6Address::new(0xfdbe, 0, 0, 0, 0, 0, 0, 0x0002),
+                dst_addr: Ipv6Address::new(0xfdbe, 0, 0, 0, 0, 0, 0, 0x0001),
                 hop_limit: 64,
                 next_header: IpProtocol::Icmpv6,
                 payload_len: 19,
@@ -411,6 +492,7 @@ fn icmp_echo_reply_as_input(#[case] medium: Medium) {
         iface.inner.process_ipv6(
             &mut sockets,
             PacketMeta::default(),
+            HardwareAddress::default(),
             &Ipv6Packet::new_checked(&data[..]).unwrap()
         ),
         response
@@ -433,8 +515,8 @@ fn unknown_proto_with_multicast_dst_address(#[case] medium: Medium) {
 
     let response = Some(Packet::new_ipv6(
         Ipv6Repr {
-            src_addr: Ipv6Address::from_parts(&[0xfdbe, 0, 0, 0, 0, 0, 0, 0x0001]),
-            dst_addr: Ipv6Address::from_parts(&[0xfdbe, 0, 0, 0, 0, 0, 0, 0x0002]),
+            src_addr: Ipv6Address::new(0xfdbe, 0, 0, 0, 0, 0, 0, 0x0001),
+            dst_addr: Ipv6Address::new(0xfdbe, 0, 0, 0, 0, 0, 0, 0x0002),
             hop_limit: 64,
             next_header: IpProtocol::Icmpv6,
             payload_len: 48,
@@ -443,8 +525,8 @@ fn unknown_proto_with_multicast_dst_address(#[case] medium: Medium) {
             reason: Icmpv6ParamProblem::UnrecognizedNxtHdr,
             pointer: 40,
             header: Ipv6Repr {
-                src_addr: Ipv6Address::from_parts(&[0xfdbe, 0, 0, 0, 0, 0, 0, 0x0002]),
-                dst_addr: Ipv6Address::from_parts(&[0xff02, 0, 0, 0, 0, 0, 0, 0x0001]),
+                src_addr: Ipv6Address::new(0xfdbe, 0, 0, 0, 0, 0, 0, 0x0002),
+                dst_addr: Ipv6Address::new(0xff02, 0, 0, 0, 0, 0, 0, 0x0001),
                 hop_limit: 64,
                 next_header: IpProtocol::Unknown(0x0c),
                 payload_len: 0,
@@ -459,6 +541,7 @@ fn unknown_proto_with_multicast_dst_address(#[case] medium: Medium) {
         iface.inner.process_ipv6(
             &mut sockets,
             PacketMeta::default(),
+            HardwareAddress::default(),
             &Ipv6Packet::new_checked(&data[..]).unwrap()
         ),
         response
@@ -482,8 +565,8 @@ fn unknown_proto(#[case] medium: Medium) {
 
     let response = Some(Packet::new_ipv6(
         Ipv6Repr {
-            src_addr: Ipv6Address::from_parts(&[0xfdbe, 0, 0, 0, 0, 0, 0, 0x0001]),
-            dst_addr: Ipv6Address::from_parts(&[0xfdbe, 0, 0, 0, 0, 0, 0, 0x0002]),
+            src_addr: Ipv6Address::new(0xfdbe, 0, 0, 0, 0, 0, 0, 0x0001),
+            dst_addr: Ipv6Address::new(0xfdbe, 0, 0, 0, 0, 0, 0, 0x0002),
             hop_limit: 64,
             next_header: IpProtocol::Icmpv6,
             payload_len: 48,
@@ -492,8 +575,8 @@ fn unknown_proto(#[case] medium: Medium) {
             reason: Icmpv6ParamProblem::UnrecognizedNxtHdr,
             pointer: 40,
             header: Ipv6Repr {
-                src_addr: Ipv6Address::from_parts(&[0xfdbe, 0, 0, 0, 0, 0, 0, 0x0002]),
-                dst_addr: Ipv6Address::from_parts(&[0xfdbe, 0, 0, 0, 0, 0, 0, 0x0001]),
+                src_addr: Ipv6Address::new(0xfdbe, 0, 0, 0, 0, 0, 0, 0x0002),
+                dst_addr: Ipv6Address::new(0xfdbe, 0, 0, 0, 0, 0, 0, 0x0001),
                 hop_limit: 64,
                 next_header: IpProtocol::Unknown(0x0c),
                 payload_len: 0,
@@ -508,6 +591,7 @@ fn unknown_proto(#[case] medium: Medium) {
         iface.inner.process_ipv6(
             &mut sockets,
             PacketMeta::default(),
+            HardwareAddress::default(),
             &Ipv6Packet::new_checked(&data[..]).unwrap()
         ),
         response
@@ -517,7 +601,7 @@ fn unknown_proto(#[case] medium: Medium) {
 #[rstest]
 #[case::ethernet(Medium::Ethernet)]
 #[cfg(feature = "medium-ethernet")]
-fn ndsic_neighbor_advertisement_ethernet(#[case] medium: Medium) {
+fn ndisc_neighbor_advertisement_ethernet(#[case] medium: Medium) {
     let data = [
         0x60, 0x0, 0x0, 0x0, 0x0, 0x20, 0x3a, 0xff, 0xfd, 0xbe, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
         0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x2, 0xfd, 0xbe, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
@@ -530,15 +614,15 @@ fn ndsic_neighbor_advertisement_ethernet(#[case] medium: Medium) {
         parse_ipv6(&data),
         Ok(Packet::new_ipv6(
             Ipv6Repr {
-                src_addr: Ipv6Address::from_parts(&[0xfdbe, 0, 0, 0, 0, 0, 0, 0x0002]),
-                dst_addr: Ipv6Address::from_parts(&[0xfdbe, 0, 0, 0, 0, 0, 0, 0x0001]),
+                src_addr: Ipv6Address::new(0xfdbe, 0, 0, 0, 0, 0, 0, 0x0002),
+                dst_addr: Ipv6Address::new(0xfdbe, 0, 0, 0, 0, 0, 0, 0x0001),
                 hop_limit: 255,
                 next_header: IpProtocol::Icmpv6,
                 payload_len: 32,
             },
             IpPayload::Icmpv6(Icmpv6Repr::Ndisc(NdiscRepr::NeighborAdvert {
                 flags: NdiscNeighborFlags::SOLICITED,
-                target_addr: Ipv6Address::from_parts(&[0xfe80, 0, 0, 0, 0, 0, 0, 0x0002]),
+                target_addr: Ipv6Address::new(0xfe80, 0, 0, 0, 0, 0, 0, 0x0002),
                 lladdr: Some(RawHardwareAddress::from_bytes(&[0, 0, 0, 0, 0, 1])),
             }))
         ))
@@ -552,6 +636,7 @@ fn ndsic_neighbor_advertisement_ethernet(#[case] medium: Medium) {
         iface.inner.process_ipv6(
             &mut sockets,
             PacketMeta::default(),
+            HardwareAddress::default(),
             &Ipv6Packet::new_checked(&data[..]).unwrap()
         ),
         response
@@ -559,7 +644,7 @@ fn ndsic_neighbor_advertisement_ethernet(#[case] medium: Medium) {
 
     assert_eq!(
         iface.inner.neighbor_cache.lookup(
-            &IpAddress::Ipv6(Ipv6Address::from_parts(&[0xfdbe, 0, 0, 0, 0, 0, 0, 0x0002])),
+            &IpAddress::Ipv6(Ipv6Address::new(0xfdbe, 0, 0, 0, 0, 0, 0, 0x0002)),
             iface.inner.now,
         ),
         NeighborAnswer::Found(HardwareAddress::Ethernet(EthernetAddress::from_bytes(&[
@@ -571,7 +656,7 @@ fn ndsic_neighbor_advertisement_ethernet(#[case] medium: Medium) {
 #[rstest]
 #[case::ethernet(Medium::Ethernet)]
 #[cfg(feature = "medium-ethernet")]
-fn ndsic_neighbor_advertisement_ethernet_multicast_addr(#[case] medium: Medium) {
+fn ndisc_neighbor_advertisement_ethernet_multicast_addr(#[case] medium: Medium) {
     let data = [
         0x60, 0x0, 0x0, 0x0, 0x0, 0x20, 0x3a, 0xff, 0xfd, 0xbe, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
         0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x2, 0xfd, 0xbe, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
@@ -584,15 +669,15 @@ fn ndsic_neighbor_advertisement_ethernet_multicast_addr(#[case] medium: Medium) 
         parse_ipv6(&data),
         Ok(Packet::new_ipv6(
             Ipv6Repr {
-                src_addr: Ipv6Address::from_parts(&[0xfdbe, 0, 0, 0, 0, 0, 0, 0x0002]),
-                dst_addr: Ipv6Address::from_parts(&[0xfdbe, 0, 0, 0, 0, 0, 0, 0x0001]),
+                src_addr: Ipv6Address::new(0xfdbe, 0, 0, 0, 0, 0, 0, 0x0002),
+                dst_addr: Ipv6Address::new(0xfdbe, 0, 0, 0, 0, 0, 0, 0x0001),
                 hop_limit: 255,
                 next_header: IpProtocol::Icmpv6,
                 payload_len: 32,
             },
             IpPayload::Icmpv6(Icmpv6Repr::Ndisc(NdiscRepr::NeighborAdvert {
                 flags: NdiscNeighborFlags::SOLICITED,
-                target_addr: Ipv6Address::from_parts(&[0xfe80, 0, 0, 0, 0, 0, 0, 0x0002]),
+                target_addr: Ipv6Address::new(0xfe80, 0, 0, 0, 0, 0, 0, 0x0002),
                 lladdr: Some(RawHardwareAddress::from_bytes(&[
                     0xff, 0xff, 0xff, 0xff, 0xff, 0xff
                 ])),
@@ -608,6 +693,7 @@ fn ndsic_neighbor_advertisement_ethernet_multicast_addr(#[case] medium: Medium) 
         iface.inner.process_ipv6(
             &mut sockets,
             PacketMeta::default(),
+            HardwareAddress::default(),
             &Ipv6Packet::new_checked(&data[..]).unwrap()
         ),
         response
@@ -615,7 +701,7 @@ fn ndsic_neighbor_advertisement_ethernet_multicast_addr(#[case] medium: Medium) 
 
     assert_eq!(
         iface.inner.neighbor_cache.lookup(
-            &IpAddress::Ipv6(Ipv6Address::from_parts(&[0xfdbe, 0, 0, 0, 0, 0, 0, 0x0002])),
+            &IpAddress::Ipv6(Ipv6Address::new(0xfdbe, 0, 0, 0, 0, 0, 0, 0x0002)),
             iface.inner.now,
         ),
         NeighborAnswer::NotFound,
@@ -625,7 +711,7 @@ fn ndsic_neighbor_advertisement_ethernet_multicast_addr(#[case] medium: Medium) 
 #[rstest]
 #[case::ieee802154(Medium::Ieee802154)]
 #[cfg(feature = "medium-ieee802154")]
-fn ndsic_neighbor_advertisement_ieee802154(#[case] medium: Medium) {
+fn ndisc_neighbor_advertisement_ieee802154(#[case] medium: Medium) {
     let data = [
         0x60, 0x0, 0x0, 0x0, 0x0, 0x28, 0x3a, 0xff, 0xfd, 0xbe, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
         0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x2, 0xfd, 0xbe, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
@@ -638,15 +724,15 @@ fn ndsic_neighbor_advertisement_ieee802154(#[case] medium: Medium) {
         parse_ipv6(&data),
         Ok(Packet::new_ipv6(
             Ipv6Repr {
-                src_addr: Ipv6Address::from_parts(&[0xfdbe, 0, 0, 0, 0, 0, 0, 0x0002]),
-                dst_addr: Ipv6Address::from_parts(&[0xfdbe, 0, 0, 0, 0, 0, 0, 0x0001]),
+                src_addr: Ipv6Address::new(0xfdbe, 0, 0, 0, 0, 0, 0, 0x0002),
+                dst_addr: Ipv6Address::new(0xfdbe, 0, 0, 0, 0, 0, 0, 0x0001),
                 hop_limit: 255,
                 next_header: IpProtocol::Icmpv6,
                 payload_len: 40,
             },
             IpPayload::Icmpv6(Icmpv6Repr::Ndisc(NdiscRepr::NeighborAdvert {
                 flags: NdiscNeighborFlags::SOLICITED,
-                target_addr: Ipv6Address::from_parts(&[0xfe80, 0, 0, 0, 0, 0, 0, 0x0002]),
+                target_addr: Ipv6Address::new(0xfe80, 0, 0, 0, 0, 0, 0, 0x0002),
                 lladdr: Some(RawHardwareAddress::from_bytes(&[0, 0, 0, 0, 0, 0, 0, 1])),
             }))
         ))
@@ -660,6 +746,7 @@ fn ndsic_neighbor_advertisement_ieee802154(#[case] medium: Medium) {
         iface.inner.process_ipv6(
             &mut sockets,
             PacketMeta::default(),
+            HardwareAddress::default(),
             &Ipv6Packet::new_checked(&data[..]).unwrap()
         ),
         response
@@ -667,7 +754,7 @@ fn ndsic_neighbor_advertisement_ieee802154(#[case] medium: Medium) {
 
     assert_eq!(
         iface.inner.neighbor_cache.lookup(
-            &IpAddress::Ipv6(Ipv6Address::from_parts(&[0xfdbe, 0, 0, 0, 0, 0, 0, 0x0002])),
+            &IpAddress::Ipv6(Ipv6Address::new(0xfdbe, 0, 0, 0, 0, 0, 0, 0x0002)),
             iface.inner.now,
         ),
         NeighborAnswer::Found(HardwareAddress::Ieee802154(Ieee802154Address::from_bytes(
@@ -745,7 +832,6 @@ fn test_handle_valid_ndisc_request(#[case] medium: Medium) {
     assert_eq!(
         iface.inner.lookup_hardware_addr(
             MockTxToken,
-            &IpAddress::Ipv6(local_ip_addr),
             &IpAddress::Ipv6(remote_ip_addr),
             &mut iface.fragmenter,
         ),
@@ -916,8 +1002,8 @@ fn get_source_address() {
         Ipv6Address::new(0x2001, 0x0db9, 0x0003, 0, 0, 0, 0, 2);
 
     assert_eq!(
-        iface.inner.get_source_address_ipv6(&Ipv6Address::LOOPBACK),
-        Ipv6Address::LOOPBACK
+        iface.inner.get_source_address_ipv6(&Ipv6Address::LOCALHOST),
+        Ipv6Address::LOCALHOST
     );
 
     assert_eq!(
@@ -939,7 +1025,7 @@ fn get_source_address() {
     assert_eq!(
         iface
             .inner
-            .get_source_address_ipv6(&Ipv6Address::LINK_LOCAL_ALL_NODES),
+            .get_source_address_ipv6(&IPV6_LINK_LOCAL_ALL_NODES),
         OWN_LINK_LOCAL_ADDR
     );
     assert_eq!(
@@ -968,7 +1054,7 @@ fn get_source_address() {
         OWN_UNIQUE_LOCAL_ADDR1
     );
     assert_eq!(
-        iface.get_source_address_ipv6(&Ipv6Address::LINK_LOCAL_ALL_NODES),
+        iface.get_source_address_ipv6(&IPV6_LINK_LOCAL_ALL_NODES),
         OWN_LINK_LOCAL_ADDR
     );
     assert_eq!(
@@ -1014,8 +1100,8 @@ fn get_source_address_only_link_local() {
         Ipv6Address::new(0x2001, 0x0db9, 0x0003, 0, 0, 0, 0, 2);
 
     assert_eq!(
-        iface.inner.get_source_address_ipv6(&Ipv6Address::LOOPBACK),
-        Ipv6Address::LOOPBACK
+        iface.inner.get_source_address_ipv6(&Ipv6Address::LOCALHOST),
+        Ipv6Address::LOCALHOST
     );
 
     assert_eq!(
@@ -1037,7 +1123,7 @@ fn get_source_address_only_link_local() {
     assert_eq!(
         iface
             .inner
-            .get_source_address_ipv6(&Ipv6Address::LINK_LOCAL_ALL_NODES),
+            .get_source_address_ipv6(&IPV6_LINK_LOCAL_ALL_NODES),
         OWN_LINK_LOCAL_ADDR
     );
     assert_eq!(
@@ -1066,7 +1152,7 @@ fn get_source_address_only_link_local() {
         OWN_LINK_LOCAL_ADDR
     );
     assert_eq!(
-        iface.get_source_address_ipv6(&Ipv6Address::LINK_LOCAL_ALL_NODES),
+        iface.get_source_address_ipv6(&IPV6_LINK_LOCAL_ALL_NODES),
         OWN_LINK_LOCAL_ADDR
     );
     assert_eq!(
@@ -1105,67 +1191,415 @@ fn get_source_address_empty_interface() {
         Ipv6Address::new(0x2001, 0x0db9, 0x0003, 0, 0, 0, 0, 2);
 
     assert_eq!(
-        iface.inner.get_source_address_ipv6(&Ipv6Address::LOOPBACK),
-        Ipv6Address::LOOPBACK
+        iface.inner.get_source_address_ipv6(&Ipv6Address::LOCALHOST),
+        Ipv6Address::LOCALHOST
     );
 
     assert_eq!(
         iface.inner.get_source_address_ipv6(&LINK_LOCAL_ADDR),
-        Ipv6Address::LOOPBACK
+        Ipv6Address::LOCALHOST
     );
     assert_eq!(
         iface.inner.get_source_address_ipv6(&UNIQUE_LOCAL_ADDR1),
-        Ipv6Address::LOOPBACK
+        Ipv6Address::LOCALHOST
     );
     assert_eq!(
         iface.inner.get_source_address_ipv6(&UNIQUE_LOCAL_ADDR2),
-        Ipv6Address::LOOPBACK
+        Ipv6Address::LOCALHOST
     );
     assert_eq!(
         iface.inner.get_source_address_ipv6(&UNIQUE_LOCAL_ADDR3),
-        Ipv6Address::LOOPBACK
+        Ipv6Address::LOCALHOST
     );
     assert_eq!(
         iface
             .inner
-            .get_source_address_ipv6(&Ipv6Address::LINK_LOCAL_ALL_NODES),
-        Ipv6Address::LOOPBACK
+            .get_source_address_ipv6(&IPV6_LINK_LOCAL_ALL_NODES),
+        Ipv6Address::LOCALHOST
     );
     assert_eq!(
         iface.inner.get_source_address_ipv6(&GLOBAL_UNICAST_ADDR1),
-        Ipv6Address::LOOPBACK
+        Ipv6Address::LOCALHOST
     );
     assert_eq!(
         iface.inner.get_source_address_ipv6(&GLOBAL_UNICAST_ADDR2),
-        Ipv6Address::LOOPBACK
+        Ipv6Address::LOCALHOST
     );
 
     assert_eq!(
         iface.get_source_address_ipv6(&LINK_LOCAL_ADDR),
-        Ipv6Address::LOOPBACK
+        Ipv6Address::LOCALHOST
     );
     assert_eq!(
         iface.get_source_address_ipv6(&UNIQUE_LOCAL_ADDR1),
-        Ipv6Address::LOOPBACK
+        Ipv6Address::LOCALHOST
     );
     assert_eq!(
         iface.get_source_address_ipv6(&UNIQUE_LOCAL_ADDR2),
-        Ipv6Address::LOOPBACK
+        Ipv6Address::LOCALHOST
     );
     assert_eq!(
         iface.get_source_address_ipv6(&UNIQUE_LOCAL_ADDR3),
-        Ipv6Address::LOOPBACK
+        Ipv6Address::LOCALHOST
     );
     assert_eq!(
-        iface.get_source_address_ipv6(&Ipv6Address::LINK_LOCAL_ALL_NODES),
-        Ipv6Address::LOOPBACK
+        iface.get_source_address_ipv6(&IPV6_LINK_LOCAL_ALL_NODES),
+        Ipv6Address::LOCALHOST
     );
     assert_eq!(
         iface.get_source_address_ipv6(&GLOBAL_UNICAST_ADDR1),
-        Ipv6Address::LOOPBACK
+        Ipv6Address::LOCALHOST
     );
     assert_eq!(
         iface.get_source_address_ipv6(&GLOBAL_UNICAST_ADDR2),
-        Ipv6Address::LOOPBACK
+        Ipv6Address::LOCALHOST
     );
+}
+
+#[rstest]
+#[case(Medium::Ip)]
+#[cfg(feature = "medium-ip")]
+#[case(Medium::Ethernet)]
+#[cfg(feature = "medium-ethernet")]
+fn test_join_ipv6_multicast_group(#[case] medium: Medium) {
+    fn recv_icmpv6(
+        device: &mut crate::tests::TestingDevice,
+        timestamp: Instant,
+    ) -> std::vec::Vec<Ipv6Packet<std::vec::Vec<u8>>> {
+        let caps = device.capabilities();
+        recv_all(device, timestamp)
+            .iter()
+            .filter_map(|frame| {
+                let ipv6_packet = match caps.medium {
+                    #[cfg(feature = "medium-ethernet")]
+                    Medium::Ethernet => {
+                        let eth_frame = EthernetFrame::new_checked(frame).ok()?;
+                        Ipv6Packet::new_checked(eth_frame.payload()).ok()?
+                    }
+                    #[cfg(feature = "medium-ip")]
+                    Medium::Ip => Ipv6Packet::new_checked(&frame[..]).ok()?,
+                    #[cfg(feature = "medium-ieee802154")]
+                    Medium::Ieee802154 => todo!(),
+                };
+                let buf = ipv6_packet.into_inner().to_vec();
+                Some(Ipv6Packet::new_unchecked(buf))
+            })
+            .collect::<std::vec::Vec<_>>()
+    }
+
+    let (mut iface, mut sockets, mut device) = setup(medium);
+
+    let groups = [
+        Ipv6Address::new(0xff05, 0, 0, 0, 0, 0, 0, 0x00fb),
+        Ipv6Address::new(0xff0e, 0, 0, 0, 0, 0, 0, 0x0017),
+    ];
+
+    let timestamp = Instant::from_millis(0);
+
+    // Drain the unsolicited node multicast report from the device
+    iface.poll(timestamp, &mut device, &mut sockets);
+    let _ = recv_icmpv6(&mut device, timestamp);
+
+    for &group in &groups {
+        iface.join_multicast_group(group).unwrap();
+        assert!(iface.has_multicast_group(group));
+    }
+    assert!(iface.has_multicast_group(IPV6_LINK_LOCAL_ALL_NODES));
+    iface.poll(timestamp, &mut device, &mut sockets);
+    assert!(iface.has_multicast_group(IPV6_LINK_LOCAL_ALL_NODES));
+
+    let reports = recv_icmpv6(&mut device, timestamp);
+    assert_eq!(reports.len(), 2);
+
+    let caps = device.capabilities();
+    let checksum_caps = &caps.checksum;
+    for (&group_addr, ipv6_packet) in groups.iter().zip(reports) {
+        let buf = ipv6_packet.into_inner();
+        let ipv6_packet = Ipv6Packet::new_unchecked(buf.as_slice());
+
+        let _ipv6_repr = Ipv6Repr::parse(&ipv6_packet).unwrap();
+        let ip_payload = ipv6_packet.payload();
+
+        // The first 2 octets of this payload hold the next-header indicator and the
+        // Hop-by-Hop header length (in 8-octet words, minus 1). The remaining 6 octets
+        // hold the Hop-by-Hop PadN and Router Alert options.
+        let hbh_header = Ipv6HopByHopHeader::new_checked(&ip_payload[..8]).unwrap();
+        let hbh_repr = Ipv6HopByHopRepr::parse(&hbh_header).unwrap();
+
+        assert_eq!(hbh_repr.options.len(), 3);
+        assert_eq!(
+            hbh_repr.options[0],
+            Ipv6OptionRepr::Unknown {
+                type_: Ipv6OptionType::Unknown(IpProtocol::Icmpv6.into()),
+                length: 0,
+                data: &[],
+            }
+        );
+        assert_eq!(
+            hbh_repr.options[1],
+            Ipv6OptionRepr::RouterAlert(Ipv6OptionRouterAlert::MulticastListenerDiscovery)
+        );
+        assert_eq!(hbh_repr.options[2], Ipv6OptionRepr::PadN(0));
+
+        let icmpv6_packet =
+            Icmpv6Packet::new_checked(&ip_payload[hbh_repr.buffer_len()..]).unwrap();
+        let icmpv6_repr = Icmpv6Repr::parse(
+            &ipv6_packet.src_addr(),
+            &ipv6_packet.dst_addr(),
+            &icmpv6_packet,
+            checksum_caps,
+        )
+        .unwrap();
+
+        let record_data = match icmpv6_repr {
+            Icmpv6Repr::Mld(MldRepr::Report {
+                nr_mcast_addr_rcrds,
+                data,
+            }) => {
+                assert_eq!(nr_mcast_addr_rcrds, 1);
+                data
+            }
+            other => panic!("unexpected icmpv6_repr: {:?}", other),
+        };
+
+        let record = MldAddressRecord::new_checked(record_data).unwrap();
+        let record_repr = MldAddressRecordRepr::parse(&record).unwrap();
+
+        assert_eq!(
+            record_repr,
+            MldAddressRecordRepr {
+                num_srcs: 0,
+                mcast_addr: group_addr,
+                record_type: MldRecordType::ChangeToInclude,
+                aux_data_len: 0,
+                payload: &[],
+            }
+        );
+
+        if !group_addr.is_solicited_node_multicast() {
+            iface.leave_multicast_group(group_addr).unwrap();
+            assert!(!iface.has_multicast_group(group_addr));
+            iface.poll(timestamp, &mut device, &mut sockets);
+            assert!(!iface.has_multicast_group(group_addr));
+        }
+    }
+}
+
+#[rstest]
+#[case(Medium::Ethernet)]
+#[cfg(all(feature = "multicast", feature = "medium-ethernet"))]
+fn test_handle_valid_multicast_query(#[case] medium: Medium) {
+    fn recv_icmpv6(
+        device: &mut crate::tests::TestingDevice,
+        timestamp: Instant,
+    ) -> std::vec::Vec<Ipv6Packet<std::vec::Vec<u8>>> {
+        let caps = device.capabilities();
+        recv_all(device, timestamp)
+            .iter()
+            .filter_map(|frame| {
+                let ipv6_packet = match caps.medium {
+                    #[cfg(feature = "medium-ethernet")]
+                    Medium::Ethernet => {
+                        let eth_frame = EthernetFrame::new_checked(frame).ok()?;
+                        Ipv6Packet::new_checked(eth_frame.payload()).ok()?
+                    }
+                    #[cfg(feature = "medium-ip")]
+                    Medium::Ip => Ipv6Packet::new_checked(&frame[..]).ok()?,
+                    #[cfg(feature = "medium-ieee802154")]
+                    Medium::Ieee802154 => todo!(),
+                };
+                let buf = ipv6_packet.into_inner().to_vec();
+                Some(Ipv6Packet::new_unchecked(buf))
+            })
+            .collect::<std::vec::Vec<_>>()
+    }
+
+    let (mut iface, mut sockets, mut device) = setup(medium);
+
+    let mut timestamp = Instant::ZERO;
+
+    let mut eth_bytes = vec![0u8; 86];
+
+    let local_ip_addr = Ipv6Address::new(0xfe80, 0, 0, 0, 0, 0, 0, 1);
+    let remote_ip_addr = Ipv6Address::new(0xfe80, 0, 0, 0, 0, 0, 0, 100);
+    let remote_hw_addr = EthernetAddress([0x52, 0x54, 0x00, 0x00, 0x00, 0x00]);
+    let query_ip_addr = Ipv6Address::new(0xff02, 0, 0, 0, 0, 0, 0, 0x1234);
+
+    iface.join_multicast_group(query_ip_addr).unwrap();
+
+    iface.poll(timestamp, &mut device, &mut sockets);
+    // flush multicast reports from the join_multicast_group calls
+    recv_icmpv6(&mut device, timestamp);
+
+    let queries = [
+        // General query, expect both multicast addresses back
+        (
+            Ipv6Address::UNSPECIFIED,
+            IPV6_LINK_LOCAL_ALL_NODES,
+            vec![local_ip_addr.solicited_node(), query_ip_addr],
+        ),
+        // Address specific query, expect only the queried address back
+        (query_ip_addr, query_ip_addr, vec![query_ip_addr]),
+    ];
+
+    for (mcast_query, address, _results) in queries.iter() {
+        let query = Icmpv6Repr::Mld(MldRepr::Query {
+            max_resp_code: 1000,
+            mcast_addr: *mcast_query,
+            s_flag: false,
+            qrv: 1,
+            qqic: 60,
+            num_srcs: 0,
+            data: &[0, 0, 0, 0],
+        });
+
+        let ip_repr = IpRepr::Ipv6(Ipv6Repr {
+            src_addr: remote_ip_addr,
+            dst_addr: *address,
+            next_header: IpProtocol::Icmpv6,
+            hop_limit: 1,
+            payload_len: query.buffer_len(),
+        });
+
+        let mut frame = EthernetFrame::new_unchecked(&mut eth_bytes);
+        frame.set_dst_addr(EthernetAddress([0x33, 0x33, 0x00, 0x00, 0x00, 0x00]));
+        frame.set_src_addr(remote_hw_addr);
+        frame.set_ethertype(EthernetProtocol::Ipv6);
+        ip_repr.emit(frame.payload_mut(), &ChecksumCapabilities::default());
+        query.emit(
+            &remote_ip_addr,
+            address,
+            &mut Icmpv6Packet::new_unchecked(&mut frame.payload_mut()[ip_repr.header_len()..]),
+            &ChecksumCapabilities::default(),
+        );
+
+        iface.inner.process_ethernet(
+            &mut sockets,
+            PacketMeta::default(),
+            frame.into_inner(),
+            &mut iface.fragments,
+        );
+
+        timestamp += crate::time::Duration::from_millis(1000);
+        iface.poll(timestamp, &mut device, &mut sockets);
+    }
+
+    let reports = recv_icmpv6(&mut device, timestamp);
+    assert_eq!(reports.len(), queries.len());
+
+    let caps = device.capabilities();
+    let checksum_caps = &caps.checksum;
+    for ((_mcast_query, _address, results), ipv6_packet) in queries.iter().zip(reports) {
+        let buf = ipv6_packet.into_inner();
+        let ipv6_packet = Ipv6Packet::new_unchecked(buf.as_slice());
+
+        let ipv6_repr = Ipv6Repr::parse(&ipv6_packet).unwrap();
+        let ip_payload = ipv6_packet.payload();
+        assert_eq!(ipv6_repr.dst_addr, IPV6_LINK_LOCAL_ALL_MLDV2_ROUTERS);
+
+        // The first 2 octets of this payload hold the next-header indicator and the
+        // Hop-by-Hop header length (in 8-octet words, minus 1). The remaining 6 octets
+        // hold the Hop-by-Hop PadN and Router Alert options.
+        let hbh_header = Ipv6HopByHopHeader::new_checked(&ip_payload[..8]).unwrap();
+        let hbh_repr = Ipv6HopByHopRepr::parse(&hbh_header).unwrap();
+
+        assert_eq!(hbh_repr.options.len(), 3);
+        assert_eq!(
+            hbh_repr.options[0],
+            Ipv6OptionRepr::Unknown {
+                type_: Ipv6OptionType::Unknown(IpProtocol::Icmpv6.into()),
+                length: 0,
+                data: &[],
+            }
+        );
+        assert_eq!(
+            hbh_repr.options[1],
+            Ipv6OptionRepr::RouterAlert(Ipv6OptionRouterAlert::MulticastListenerDiscovery)
+        );
+        assert_eq!(hbh_repr.options[2], Ipv6OptionRepr::PadN(0));
+
+        let icmpv6_packet =
+            Icmpv6Packet::new_checked(&ip_payload[hbh_repr.buffer_len()..]).unwrap();
+        let icmpv6_repr = Icmpv6Repr::parse(
+            &ipv6_packet.src_addr(),
+            &ipv6_packet.dst_addr(),
+            &icmpv6_packet,
+            checksum_caps,
+        )
+        .unwrap();
+
+        let record_data = match icmpv6_repr {
+            Icmpv6Repr::Mld(MldRepr::Report {
+                nr_mcast_addr_rcrds,
+                data,
+            }) => {
+                assert_eq!(nr_mcast_addr_rcrds, results.len() as u16);
+                data
+            }
+            other => panic!("unexpected icmpv6_repr: {:?}", other),
+        };
+
+        let mut record_reprs = Vec::new();
+        let mut payload = record_data;
+
+        // FIXME: parsing multiple address records should be done by the MLD code
+        while !payload.is_empty() {
+            let record = MldAddressRecord::new_checked(payload).unwrap();
+            let mut record_repr = MldAddressRecordRepr::parse(&record).unwrap();
+            payload = record_repr.payload;
+            record_repr.payload = &[];
+            record_reprs.push(record_repr);
+        }
+
+        let expected_records = results
+            .iter()
+            .map(|addr| MldAddressRecordRepr {
+                num_srcs: 0,
+                mcast_addr: *addr,
+                record_type: MldRecordType::ModeIsExclude,
+                aux_data_len: 0,
+                payload: &[],
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(record_reprs, expected_records);
+    }
+}
+
+#[rstest]
+#[case(Medium::Ethernet)]
+#[cfg(all(feature = "multicast", feature = "medium-ethernet"))]
+fn test_solicited_node_multicast_autojoin(#[case] medium: Medium) {
+    let (mut iface, _, _) = setup(medium);
+
+    let addr1 = Ipv6Address::new(0xfe80, 0, 0, 0, 0, 0, 0, 1);
+    let addr2 = Ipv6Address::new(0xfe80, 0, 0, 0, 0, 0, 0, 2);
+
+    iface.update_ip_addrs(|ip_addrs| {
+        ip_addrs.clear();
+        ip_addrs.push(IpCidr::new(addr1.into(), 64)).unwrap();
+    });
+    assert!(iface.has_multicast_group(addr1.solicited_node()));
+    assert!(!iface.has_multicast_group(addr2.solicited_node()));
+
+    iface.update_ip_addrs(|ip_addrs| {
+        ip_addrs.clear();
+        ip_addrs.push(IpCidr::new(addr2.into(), 64)).unwrap();
+    });
+    assert!(!iface.has_multicast_group(addr1.solicited_node()));
+    assert!(iface.has_multicast_group(addr2.solicited_node()));
+
+    iface.update_ip_addrs(|ip_addrs| {
+        ip_addrs.clear();
+        ip_addrs.push(IpCidr::new(addr1.into(), 64)).unwrap();
+        ip_addrs.push(IpCidr::new(addr2.into(), 64)).unwrap();
+    });
+    assert!(iface.has_multicast_group(addr1.solicited_node()));
+    assert!(iface.has_multicast_group(addr2.solicited_node()));
+
+    iface.update_ip_addrs(|ip_addrs| {
+        ip_addrs.clear();
+    });
+    assert!(!iface.has_multicast_group(addr1.solicited_node()));
+    assert!(!iface.has_multicast_group(addr2.solicited_node()));
 }
