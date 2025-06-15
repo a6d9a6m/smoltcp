@@ -384,7 +384,6 @@ pub trait RxToken {
     /// Preprocess the incomming packet before it is passed to the stack.
     ///
     /// e.g., prepare TCP sockets when received a SYN packet.
-    #[cfg(feature = "socket")]
     fn preprocess(&self, _sockets: &mut crate::iface::SocketSet<'_>) {}
 }
 
