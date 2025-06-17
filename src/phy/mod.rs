@@ -118,7 +118,6 @@ mod tuntap_interface;
 pub use self::sys::wait;
 
 pub use self::fault_injector::FaultInjector;
-use crate::iface::SocketSet;
 #[cfg(feature = "alloc")]
 pub use self::fuzz_injector::{FuzzInjector, Fuzzer};
 #[cfg(feature = "alloc")]
@@ -132,6 +131,7 @@ pub use self::tracer::Tracer;
     any(target_os = "linux", target_os = "android")
 ))]
 pub use self::tuntap_interface::TunTapInterface;
+use crate::iface::SocketSet;
 
 /// Metadata associated to a packet.
 ///
