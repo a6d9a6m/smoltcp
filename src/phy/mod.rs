@@ -118,7 +118,7 @@ mod tuntap_interface;
 pub use self::sys::wait;
 
 pub use self::fault_injector::FaultInjector;
-pub use crate::iface::SocketSet;
+use crate::iface::SocketSet;
 #[cfg(feature = "alloc")]
 pub use self::fuzz_injector::{FuzzInjector, Fuzzer};
 #[cfg(feature = "alloc")]
