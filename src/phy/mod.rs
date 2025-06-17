@@ -118,6 +118,7 @@ mod tuntap_interface;
 pub use self::sys::wait;
 
 pub use self::fault_injector::FaultInjector;
+pub use crate::iface::SocketSet;
 #[cfg(feature = "alloc")]
 pub use self::fuzz_injector::{FuzzInjector, Fuzzer};
 #[cfg(feature = "alloc")]
@@ -384,7 +385,7 @@ pub trait RxToken {
     /// Preprocess the incomming packet before it is passed to the stack.
     ///
     /// e.g., prepare TCP sockets when received a SYN packet.
-    fn preprocess(&self, _sockets: &mut crate::iface::SocketSet<'_>) {}
+    fn preprocess(&self, _sockets: &mut SocketSet<'_>) {}
 }
 
 /// A token to transmit a single network packet.
