@@ -131,7 +131,6 @@ pub use self::tracer::Tracer;
     any(target_os = "linux", target_os = "android")
 ))]
 pub use self::tuntap_interface::TunTapInterface;
-use crate::iface::SocketSet;
 
 /// Metadata associated to a packet.
 ///
@@ -382,10 +381,6 @@ pub trait RxToken {
         PacketMeta::default()
     }
 
-    /// Preprocess the incomming packet before it is passed to the stack.
-    ///
-    /// e.g., prepare TCP sockets when received a SYN packet.
-    fn preprocess(&self, _sockets: &mut SocketSet<'_>) {}
 }
 
 /// A token to transmit a single network packet.
