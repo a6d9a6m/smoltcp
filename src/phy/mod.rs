@@ -89,6 +89,7 @@ impl<'a> phy::TxToken for StmPhyTxToken<'a> {
 )]
 
 use crate::time::Instant;
+use crate::iface::SocketSet;
 
 #[cfg(all(
     any(feature = "phy-raw_socket", feature = "phy-tuntap_interface"),
@@ -131,7 +132,7 @@ pub use self::tracer::Tracer;
     any(target_os = "linux", target_os = "android")
 ))]
 pub use self::tuntap_interface::TunTapInterface;
-use crate::iface::SocketSet;
+
 
 /// Metadata associated to a packet.
 ///
