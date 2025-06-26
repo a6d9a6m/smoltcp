@@ -133,7 +133,6 @@ pub use self::tracer::Tracer;
 ))]
 pub use self::tuntap_interface::TunTapInterface;
 
-
 /// Metadata associated to a packet.
 ///
 /// The packet metadata is a set of attributes associated to network packets
