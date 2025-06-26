@@ -4,7 +4,7 @@ set -eox pipefail
 
 export DEFMT_LOG=trace
 
-MSRV="1.81.0"
+MSRV="1.82.0"
 
 RUSTC_VERSIONS=(
     $MSRV
@@ -14,7 +14,7 @@ RUSTC_VERSIONS=(
 
 FEATURES_TEST=(
     "default"
-    "std,proto-ipv4"
+    "std,proto-ipv4,medium-ethernet,socket-tcp"
     "std,medium-ethernet,phy-raw_socket,proto-ipv6,socket-udp,socket-dns"
     "std,medium-ethernet,phy-tuntap_interface,proto-ipv6,socket-udp"
     "std,medium-ethernet,proto-ipv4,proto-ipv4-fragmentation,socket-raw,socket-dns"
