@@ -373,6 +373,7 @@ impl From<::core::net::SocketAddr> for Endpoint {
         }
     }
 }
+
 impl From<Endpoint> for core::net::SocketAddr {
     fn from(x: Endpoint) -> core::net::SocketAddr {
         core::net::SocketAddr::new(x.addr.into(), x.port)
