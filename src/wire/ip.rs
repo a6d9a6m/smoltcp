@@ -1,12 +1,11 @@
-use core::convert::From;
-use core::fmt;
-
 use super::{Error, Result};
 use crate::phy::ChecksumCapabilities;
 #[cfg(feature = "proto-ipv4")]
 use crate::wire::{Ipv4Address, Ipv4AddressExt, Ipv4Cidr, Ipv4Packet, Ipv4Repr};
 #[cfg(feature = "proto-ipv6")]
 use crate::wire::{Ipv6Address, Ipv6AddressExt, Ipv6Cidr, Ipv6Packet, Ipv6Repr};
+use core::convert::From;
+use core::fmt;
 
 /// Internet protocol version.
 #[derive(Debug, Hash, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
@@ -371,6 +370,12 @@ impl From<::core::net::SocketAddr> for Endpoint {
             addr: x.ip().into(),
             port: x.port(),
         }
+    }
+}
+#[cfg(all(feature = "proto-ipv4", feature = "proto-ipv6"))]
+impl From<Endpoint> for core::net::SocketAddr {
+    fn from(x: Endpoint) -> core::net::SocketAddr {
+        core::net::SocketAddr::new(x.addr.into(), x.port)
     }
 }
 
